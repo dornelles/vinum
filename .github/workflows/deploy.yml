@@ -1,0 +1,46 @@
+name: Deploy Vinum
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy staging
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            cd /opt/apps/vinum/staging
+            git fetch origin
+            git checkout staging
+            git reset --hard origin/staging
+            docker compose -p vinum-staging up -d --build
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy production
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            cd /opt/apps/vinum/production
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+            docker compose -p vinum-production up -d --build
