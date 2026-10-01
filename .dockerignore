@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+.git
+node_modules
+dist
+backups
+backend/uploads
+backend/src/generated
+*.log

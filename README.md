@@ -23,6 +23,10 @@ npm run prisma:seed
 No PowerShell com scripts bloqueados, use `npm.cmd` em vez de `npm`.
 A instalação vazia dispensa somente a migração histórica de demonstração incompatível, sem alterar seu arquivo. Dados de demonstração não são restaurados.
 
+## Deploy na VPS
+
+A API e o frontend podem rodar em containers, sem Node.js no host. Veja [docs/deploy-vps.md](docs/deploy-vps.md) para os ambientes, comandos de deploy e ajuste do Nginx. O perfil `app` ativa a API e o frontend; sem esse perfil, `docker compose up -d` continua iniciando apenas o PostgreSQL para desenvolvimento local.
+
 ## Execução
 
 Em dois terminais:
@@ -64,9 +68,7 @@ local acessível e restaure com:
 ```
 
 O script recria os serviços definidos no Compose, restaura o PostgreSQL e os
-uploads e instala as dependências. O pgAdmin volta em `http://localhost:5051`;
-cadastre o servidor usando host `postgres`, porta `5432`, banco e usuário
-`vinum`. A configuração visual interna do pgAdmin não faz parte do backup.
+uploads e instala as dependências. O PostgreSQL volta no serviço `postgres`, com as variáveis de banco definidas no `.env`.
 
 ## Domínio administrativo
 
