@@ -1,0 +1,28 @@
+.password-control { display: flex; align-items: center; width: 100%; min-width: 0; gap: .35rem; }
+.password-control input { min-width: 0; flex: 1; }
+.password-control button { flex-shrink: 0; border: 0; border-radius: .35rem; padding: .5rem .35rem; background: transparent; color: #7d1d2d; font: inherit; font-size: .75rem; cursor: pointer; }
+.password-control button:focus-visible { outline: 2px solid #7d1d2d; outline-offset: 2px; }
+.password-checklist { display: grid; gap: .25rem; margin: .5rem 0; padding: 0; list-style: none; font-size: .8rem; color: #51443e; }
+.field-error { display: block; margin: .3rem 0 0; color: #9b202d; font-size: .8rem; line-height: 1.4; }
+[aria-invalid="true"] { border-color: #b42332 !important; }
+/* Auth panels must grow when inline errors/checklists add content. */
+.auth-stage { padding-block: 3rem; }
+.auth-stage .auth-panel { position: relative; top: auto; height: auto; max-height: none; transform: none; translate: none; }
+/* Keep the complete registration form reachable inside the clipped stage. */
+.auth-stage .registration-panel {
+  max-height: calc(100dvh - clamp(36px, 6.4vw, 120px) - 6rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #7d1d2d #f5eee6;
+}
+.registration-panel > * { flex-shrink: 0; }
+@media (max-width: 1120px) {
+  .auth-stage { min-height: auto !important; padding: 1.5rem 0; }
+  .auth-stage .auth-panel { position: relative; left: auto; top: auto; transform: none; margin: auto; }
+  .auth-stage .registration-panel { max-height: calc(100dvh - 6rem); }
+}
+@media (max-width: 560px) {
+  .auth-stage .registration-panel { max-height: calc(100dvh - 3rem); }
+}

@@ -1,0 +1,518 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../backend/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String  @id @default(cuid())
+  name          String
+  age           Int?
+  address       String?
+  phone         String?
+  birthDate     String?
+  street        String?
+  addressNumber String?
+  city          String?
+  state         String?
+  country       String?
+  email         String  @unique
+  passwordHash  String
+  passwordSalt  String?
+  roleId        String
+  roleRef       Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  active        Boolean @default(true)
+  wineryId      String?
+  winery        Winery? @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+
+  sessions          Session[]
+  createdWines      Wine[]             @relation("WineCreator")
+  orders            CustomerOrder[]
+  inventory         InventoryItem[]
+  cellarBottles     CellarBottle[]
+  externalWineries  ExternalWinery[]
+  externalWines     ExternalWine[]
+  purchaseLocations PurchaseLocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roleId])
+  @@index([wineryId])
+  @@index([email])
+  @@map("usuario")
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("role")
+}
+
+model Session {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessao")
+}
+
+model Winery {
+  id            String  @id @default(cuid())
+  name          String
+  cnpj          String  @unique
+  city          String
+  state         String
+  email         String?
+  phone         String?
+  singleton     Boolean @unique @default(true)
+  walletAddress String?
+  status        String  @default("Ativa")
+
+  wines Wine[]
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([status])
+  @@map("vinicola")
+}
+
+model Wine {
+  id String @id @default(cuid())
+
+  createdById String?
+  createdBy   User?   @relation("WineCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  wineryId String
+  winery   Winery @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+
+  typeId           String
+  wineType         WineType        @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  classificationId String?
+  classification   Classification? @relation(fields: [classificationId], references: [id], onDelete: Restrict)
+
+  name              String
+  slug              String @unique
+  volumeMl          Int
+  alcoholPercentage Float
+  description       String @db.Text
+
+  characteristics String? @map("caracteristicas") @db.Text
+  aromas          String? @map("aromas") @db.Text
+  tastingNotes    String? @map("notas_degustacao") @db.Text
+  pairing         String? @map("harmonizacao") @db.Text
+  status          String  @default("DRAFT")
+
+  imageId String?    @unique @map("imagem_vinho_id")
+  image   WineImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+
+  vintages   Vintage[]
+  batches    Batch[]
+  grapeLinks WineGrape[]
+  orderItems CustomerOrderItem[]
+  inventory  InventoryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([wineryId])
+  @@index([typeId])
+  @@index([classificationId])
+  @@index([createdById])
+  @@index([status])
+  @@index([name])
+  @@map("vinho")
+}
+
+model Classification {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  wines       Wine[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@map("classificacao")
+}
+
+model WineType {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  active      Boolean @default(true)
+
+  wines Wine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@map("tipo_vinho")
+}
+
+model Grape {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  active      Boolean @default(true)
+
+  wineLinks         WineGrape[]
+  vintageLinks      VintageGrape[]
+  batchLinks        BatchGrape[]
+  externalWineLinks ExternalWineGrape[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@map("uva")
+}
+
+model WineGrape {
+  wineId  String
+  grapeId String
+
+  wine Wine @relation(fields: [wineId], references: [id], onDelete: Cascade)
+
+  grape Grape @relation(fields: [grapeId], references: [id], onDelete: Restrict)
+
+  @@id([wineId, grapeId])
+  @@index([grapeId])
+  @@map("vinho_uva")
+}
+
+model WineImage {
+  id String @id @default(cuid())
+
+  path      String
+  altText   String?
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  wine Wine?
+
+  @@index([isPrimary])
+  @@map("imagem_vinho")
+}
+
+model Vintage {
+  id String @id @default(cuid())
+
+  wineId String
+  wine   Wine   @relation(fields: [wineId], references: [id], onDelete: Restrict)
+
+  identifier   String  @unique
+  year         Int
+  observations String?
+  status       String
+
+  supplier String?
+
+  batches    Batch[]
+  grapeLinks VintageGrape[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([id, wineId])
+  @@index([wineId])
+  @@index([year])
+  @@index([status])
+  @@map("safra")
+}
+
+model VintageGrape {
+  vintageId String
+  grapeId   String
+
+  vintage Vintage @relation(fields: [vintageId], references: [id], onDelete: Cascade)
+
+  grape Grape @relation(fields: [grapeId], references: [id], onDelete: Restrict)
+
+  @@id([vintageId, grapeId])
+  @@index([grapeId])
+  @@map("safra_uva")
+}
+
+model Batch {
+  id String @id @default(cuid())
+
+  wineId String
+  wine   Wine   @relation(fields: [wineId], references: [id], onDelete: Restrict)
+
+  vintageId String
+  vintage   Vintage @relation(fields: [vintageId, wineId], references: [id, wineId], onDelete: Restrict, onUpdate: Restrict)
+
+  code             String    @unique
+  quantityLiters   Float
+  productionDate   DateTime
+  registrationDate DateTime?
+
+  status String
+
+  blockchainRef     String?
+  qrCodePath        String?
+  qrCodePayload     String?
+  qrCodeGeneratedAt DateTime?
+
+  grapeLinks BatchGrape[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vintageId])
+  @@index([wineId])
+  @@index([status])
+  @@index([productionDate])
+  @@map("lote")
+}
+
+model BatchGrape {
+  batchId String
+  grapeId String
+
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  grape Grape @relation(fields: [grapeId], references: [id], onDelete: Restrict)
+
+  @@id([batchId, grapeId])
+  @@index([grapeId])
+  @@map("lote_uva")
+}
+
+model CustomerOrder {
+  id                  String            @id @default(cuid())
+  userId              String
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source              String            @default("VINICULA")
+  status              String            @default("REGISTRADO")
+  purchaseDate        DateTime
+  purchaseLocation    String?
+  purchaseLocationId  String?
+  purchaseLocationRef PurchaseLocation? @relation(fields: [purchaseLocationId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Cascade)
+  notes               String?           @db.Text
+
+  items     CustomerOrderItem[]
+  movements InventoryMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([purchaseDate])
+  @@index([purchaseLocationId])
+  @@map("pedido")
+}
+
+model CustomerOrderItem {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           CustomerOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  wineId          String?
+  wine            Wine?         @relation(fields: [wineId], references: [id], onDelete: Restrict)
+  externalWineId  String?
+  externalWine    ExternalWine? @relation(fields: [externalWineId], references: [id], onDelete: Restrict)
+  wineName        String
+  photoPath       String?
+  wineryName      String?
+  vintageYear     Int?
+  quantityBottles Int
+  volumeMl        Int?
+  unitPrice       Decimal?      @db.Decimal(10, 2)
+
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  bottles         CellarBottle[]
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([wineId])
+  @@index([externalWineId])
+  @@index([inventoryItemId])
+  @@map("item_pedido")
+}
+
+model InventoryItem {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wineId          String?
+  wine            Wine?         @relation(fields: [wineId], references: [id], onDelete: Restrict)
+  externalWineId  String?
+  externalWine    ExternalWine? @relation(fields: [externalWineId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Cascade)
+  name            String
+  wineryName      String?
+  photoPath       String?
+  quantityBottles Int           @default(0)
+  active          Boolean       @default(true)
+
+  orderItems CustomerOrderItem[]
+  movements  InventoryMovement[]
+  bottles    CellarBottle[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, wineId])
+  @@unique([userId, externalWineId])
+  @@index([userId])
+  @@index([wineId])
+  @@index([active])
+  @@map("estoque_item")
+}
+
+model ExternalWinery {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  street       String?
+  neighborhood String?
+  city         String?
+  stateRegion  String?
+  country      String?
+
+  wines ExternalWine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@unique([id, userId])
+  @@index([userId])
+  @@map("outras_vinicolas")
+}
+
+model ExternalWine {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalWineryId String
+  externalWinery   ExternalWinery @relation(fields: [externalWineryId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Cascade)
+  name             String
+  vintageYear      Int?
+  description      String?        @db.Text
+  characteristics  String?        @db.Text
+  aromas           String?        @db.Text
+  tastingNotes     String?        @db.Text
+  imagePath        String?
+
+  orderItems CustomerOrderItem[]
+  inventory  InventoryItem[]
+  grapeLinks ExternalWineGrape[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, externalWineryId, name])
+  @@unique([id, userId])
+  @@index([userId])
+  @@index([externalWineryId])
+  @@map("vinhos_externo")
+}
+
+model ExternalWineGrape {
+  externalWineId String
+  grapeId        String
+  externalWine   ExternalWine @relation(fields: [externalWineId], references: [id], onDelete: Cascade)
+  grape          Grape        @relation(fields: [grapeId], references: [id], onDelete: Restrict)
+
+  @@id([externalWineId, grapeId])
+  @@index([grapeId])
+  @@map("vinho_externo_uva")
+}
+
+model PurchaseLocation {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  street       String?
+  neighborhood String?
+  city         String?
+  stateRegion  String?
+  country      String?
+
+  orders CustomerOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@unique([id, userId])
+  @@index([userId])
+  @@map("locais_de_compra")
+}
+
+model InventoryMovement {
+  id               String         @id @default(cuid())
+  inventoryItemId  String
+  inventoryItem    InventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  orderId          String?
+  order            CustomerOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  cellarBottleId   String?
+  cellarBottle     CellarBottle?  @relation(fields: [cellarBottleId], references: [id], onDelete: SetNull)
+  type             String
+  quantityBottles  Int
+  reason           String?
+  purchaseLocation String?
+  occurredAt       DateTime       @default(now())
+
+  @@index([inventoryItemId])
+  @@index([type])
+  @@index([occurredAt])
+  @@index([orderId])
+  @@index([cellarBottleId])
+  @@index([inventoryItemId, type, occurredAt])
+  @@map("movimentacao_estoque")
+}
+
+model CellarBottle {
+  id              String              @id @default(cuid())
+  userId          String
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem       @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  orderItemId     String?
+  orderItem       CustomerOrderItem?  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  status          String              @default("DISPONIVEL")
+  purchasedAt     DateTime
+  openedAt        DateTime?
+  finishedAt      DateTime?
+  discardedAt     DateTime?
+  discardReason   String?             @db.Text
+  movements       InventoryMovement[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, finishedAt])
+  @@index([inventoryItemId])
+  @@index([orderItemId])
+  @@map("garrafa_adega")
+}

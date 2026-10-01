@@ -1,0 +1,482 @@
+import { saveWithImage } from './saveWithImage';
+import { ApiError } from '../../../api/feedback';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import FormField from './FormField';
+import saveIcon from '../../../assets/admin/common/save.png';
+import clearIcon from '../../../assets/admin/common/clear.png';
+import cancelIcon from '../../../assets/admin/common/cancel.png';
+import linkIcon from '../../../assets/admin/vinicola/link.png';
+import blockchainIcon from '../../../assets/admin/lote/blockchain.png';
+import qrIcon from '../../../assets/admin/lote/qrcode.png';
+import dividerLarge from '../../../assets/admin/common/divider-large.png';
+import { api } from '../../../api/api';
+import { selectVintage } from '../modules/Lote/selection';
+import ConfirmDialog from '../../../ui/ConfirmDialog';
+
+const draftFiles = new Map();
+export const unsavedQrMessage = 'O QR Code só pode ser gerado após salvar o lote. Preencha os dados obrigatórios e salve o registro primeiro.';
+
+export function batchQrAvailability(batchId?: string | number | null) {
+  return batchId
+    ? { canGenerate: true, message: '' }
+    : { canGenerate: false, message: unsavedQrMessage };
+}
+
+const secondaryButton = 'min-w-[clamp(140px,13vw,165px)] min-h-12 h-[clamp(48px,5vh,54px)] rounded-[7px] px-[clamp(16px,1.5vw,24px)] flex items-center justify-center gap-[10px] text-[clamp(13px,1vw,15px)] cursor-pointer border-[1.5px] border-[#b8aaa5] bg-white text-[#4a3d3b] transition-[transform,box-shadow,background-color,border-color,color] duration-150 hover:bg-[#fff8f6] hover:border-[#8f2940] hover:text-[#75172a] hover:shadow-[0_5px_13px_rgba(91,12,27,.10)] hover:-translate-y-px active:translate-y-0 active:scale-[.98] focus-visible:outline-[3px] focus-visible:outline-[rgba(194,137,57,.42)] focus-visible:outline-offset-2';
+
+function normalizedText(value) {
+  return String(value ?? '').trim();
+}
+
+function batchCodeToProductionDate(value) {
+  const match = /^L(\d{2})(\d{3})$/.exec(normalizedText(value).toUpperCase());
+  if (!match) return '';
+  const year = 2000 + Number(match[1]);
+  const dayOfYear = Number(match[2]);
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  if (dayOfYear < 1 || dayOfYear > (isLeapYear ? 366 : 365)) return '';
+  const date = new Date(Date.UTC(year, 0, 1));
+  date.setUTCDate(dayOfYear);
+  return date.toISOString().slice(0, 10);
+}
+
+function vintageIdentifierToYear(value) {
+  const match = /^SF(\d{2})-T\d{2}$/.exec(normalizedText(value).toUpperCase());
+  return match ? String(2000 + Number(match[1])) : '';
+}
+
+function readDraft(key) {
+  try {
+    const value = sessionStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(key) {
+  draftFiles.delete(`${key}:imageFile`);
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* armazenamento de rascunho indisponível não impede o preenchimento */
+  }
+}
+
+function draftPayload(form) {
+  return Object.fromEntries(
+    Object.entries(form).filter(([, value]) => !(typeof File !== 'undefined' && value instanceof File)),
+  );
+}
+
+function isValidField(field, value, form) {
+  if (field.type === 'file') return !value || (value instanceof File && ['image/png', 'image/jpeg', 'image/webp'].includes(value.type) && value.size <= 5 * 1024 * 1024);
+  if (field.type === 'multi-select') return !field.required || (Array.isArray(value) && value.length > 0);
+  const text = normalizedText(value);
+
+  if (!field.required && !text) return true;
+  if (field.required && !text) return false;
+
+  if (field.type === 'select') return Boolean(text);
+
+  const rule = field.validation;
+  if (!rule) return !field.required || Boolean(text);
+
+  if (rule === 'email') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(text);
+  }
+
+  if (rule === 'cnpj') {
+    return text.replace(/\D/g, '').length === 14;
+  }
+
+  if (rule === 'ethereum') {
+    return /^0x[a-fA-F0-9]{40}$/.test(text);
+  }
+
+  if (rule === 'year') {
+    return /^\d{4}$/.test(text) && Number(text) >= 1900 && Number(text) <= 2100;
+  }
+
+  if (rule === 'positiveNumber') {
+    if (!/^\d+(?:[.,]\d+)?$/.test(text)) return false;
+    return Number(text.replace(',', '.')) > 0;
+  }
+
+  if (rule === 'alcohol') {
+    if (!/^\d{1,2}(?:[.,]\d{1,2})?$|^100(?:[.,]0{1,2})?$/.test(text)) return false;
+    const number = Number(text.replace(',', '.'));
+    return number > 0 && number <= 100;
+  }
+
+  if (rule === 'date') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00`));
+  }
+
+  if (rule === 'time') {
+    return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text);
+  }
+
+  if (rule === 'registrationDate') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00`))) return false;
+    const productionDate = normalizedText(form.productionDate);
+    if (!productionDate) return false;
+    return text >= productionDate;
+  }
+
+  if (rule === 'batchCode') {
+    const match = /^L\d{2}(\d{3})$/.exec(text);
+    if (!match) return false;
+    const year = 2000 + Number(text.slice(1, 3));
+    const maxDay = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 366 : 365;
+    return Number(match[1]) >= 1 && Number(match[1]) <= maxDay;
+  }
+
+  if (rule === 'vintageIdentifier') {
+    return /^SF\d{2}-T\d{2}$/.test(text);
+  }
+
+  if (typeof rule === 'object' && rule.minLength) {
+    return text.length >= rule.minLength;
+  }
+
+  return Boolean(text);
+}
+
+function invalidFieldMessage(field) {
+  if (field.type === 'file') return 'Selecione uma imagem PNG, JPG ou WebP de até 5 MB.';
+  if (field.type === 'multi-select') return `Selecione pelo menos uma opção em ${field.label}.`;
+  if (field.validation === 'positiveNumber') return `O campo ${field.label} deve conter um número maior que zero.`;
+  if (field.validation === 'alcohol') return `O campo ${field.label} deve conter um número entre 0 e 100.`;
+  if (field.validation === 'year') return `O campo ${field.label} deve conter um ano válido.`;
+  if (field.validation === 'date' || field.validation === 'registrationDate') return `Informe uma data válida em ${field.label}.`;
+  if (field.validation === 'batchCode') return 'Use o formato L24160: L + ano com 2 dígitos + dia do ano com 3 dígitos (001 a 366).';
+  if (field.validation === 'vintageIdentifier') return 'Use o formato SF22-T04: SF + ano com 2 dígitos + código do tanque com 2 dígitos.';
+  if (field.validation === 'time') return 'Informe um horário válido no formato HH:mm.';
+  if (typeof field.validation === 'object' && field.validation.minLength) return `O campo ${field.label} deve ter pelo menos ${field.validation.minLength} caracteres.`;
+  return `Preencha corretamente o campo “${field.label}”.`;
+}
+
+export default function ModuleForm({ config, initialData, onSave, onCancel, onMessage, onSaved, confirmOnCancel = true, draftScope = config.key, onBusyChange = (_busy: boolean) => {} }) {
+  const sending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrConfirmation, setQrConfirmation] = useState(false);
+  const [qrFeedback, setQrFeedback] = useState<{ type: 'status' | 'success' | 'error'; text: string } | null>(null);
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [form,setForm] = useState<Record<string, any>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [hydratedDraftKey, setHydratedDraftKey] = useState('');
+  const [pendingConfirmation, setPendingConfirmation] = useState<'cancel' | 'clear' | null>(null);
+  const draftKey = `vinum_form_draft:${draftScope}:${initialData?.id ? String(initialData.id) : 'new'}`;
+  useEffect(()=>{
+    if (hydratedDraftKey === draftKey) return;
+    const draft = readDraft(draftKey);
+    const nextForm: Record<string, any> = {...(initialData || {}), ...(draft || {})};
+    const draftFile = draftFiles.get(`${draftKey}:imageFile`);
+    if (draftFile) nextForm.imageFile = draftFile;
+    if (config.key === 'lotes') {
+      const productionDate = batchCodeToProductionDate(nextForm.code);
+      if (productionDate) nextForm.productionDate = productionDate;
+      Object.assign(nextForm, selectVintage(String(nextForm.wineId ?? ''), config.fields.find((f) => f.name === 'vintageId')?.options ?? [], config.vintageGrapeMap ?? {}, String(nextForm.vintageId ?? '')));
+      nextForm.registrationDate = initialData?.registrationDate ?? '';
+    }
+    if (config.key === 'safras') {
+      nextForm.grapeIds = initialData?.id && nextForm.wineId === initialData.wineId
+        ? initialData.grapeIds ?? []
+        : config.wineGrapeMap?.[String(nextForm.wineId ?? '')] ?? [];
+      const year = vintageIdentifierToYear(nextForm.identifier);
+      if (year) nextForm.year = year;
+    }
+    setForm(nextForm);
+    setTouched({});
+    setSubmitted(false);
+    setHydratedDraftKey(draftKey);
+  },[draftKey,initialData,config.key,config.wineGrapeMap,config.vintageGrapeMap]);
+  useEffect(()=>{
+    if (hydratedDraftKey !== draftKey) return;
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify(draftPayload(form)));
+    } catch {
+      /* limites do armazenamento não impedem o uso normal do formulário */
+    }
+  },[draftKey,form,hydratedDraftKey]);
+  const showMessage = (text='') => onMessage?.(text);
+  const change=(name,value)=>{
+    setServerErrors(prev => { const next = { ...prev }; delete next[name]; return next; });
+    if (name === 'imageFile') {
+      if (typeof File !== 'undefined' && value instanceof File) draftFiles.set(`${draftKey}:${name}`, value);
+      else draftFiles.delete(`${draftKey}:${name}`);
+    }
+    setForm(prev=>{
+      const next: Record<string, any> = {...prev,[name]:value};
+      if (config.key === 'lotes' && name === 'code') {
+        next.productionDate = batchCodeToProductionDate(value);
+      }
+      if (config.key === 'lotes' && name === 'wineId') {
+        Object.assign(next, selectVintage(String(value), config.fields.find((f) => f.name === 'vintageId')?.options ?? [], config.vintageGrapeMap ?? {}));
+      }
+      if (config.key === 'lotes' && name === 'vintageId') {
+        next.grapeIds = config.vintageGrapeMap?.[String(value)] ?? [];
+      }
+      if (config.key === 'safras' && name === 'identifier') {
+        next.year = vintageIdentifierToYear(value);
+      }
+      if (config.key === 'safras' && name === 'wineId') {
+        next.grapeIds = initialData?.id && value === initialData.wineId ? initialData.grapeIds ?? [] : config.wineGrapeMap?.[String(value)] ?? [];
+      }
+      return next;
+    });
+    setTouched(prev=>({...prev,[name]:true}));
+    if (config.key === 'lotes' && name === 'code' && batchCodeToProductionDate(value)) {
+      setTouched(prev=>({...prev, productionDate:true}));
+    }
+    showMessage('');
+  };
+  function cancelForm() {
+    const hasChanges = Object.entries(form).some(([name, value]) => value instanceof File || String(value ?? '') !== String(initialData?.[name] ?? ''));
+    if (confirmOnCancel && hasChanges) {
+      setPendingConfirmation('cancel');
+      return;
+    }
+    performCancel();
+  }
+
+  function performCancel() {
+    clearDraft(draftKey);
+    onCancel?.();
+  }
+
+  function clearForm() {
+    setPendingConfirmation('clear');
+  }
+
+  function performClear() {
+    clearDraft(draftKey);
+    setForm({});
+    setTouched({});
+    setSubmitted(false);
+  }
+
+  const fieldValidity = useMemo(() => Object.fromEntries(
+    config.fields.map(field => [field.name, isValidField(field, form[field.name], form)])
+  ), [config.fields, form]);
+
+  function firstInvalidRequired(limit = config.fields.length) {
+    return config.fields.slice(0, limit).find(field => !field.disabled && !fieldValidity[field.name]);
+  }
+
+  function focusField(field) {
+    requestAnimationFrame(() => document.getElementById(`field-${field.name}`)?.focus());
+  }
+
+  async function submit(e){
+    e.preventDefault();
+    if (sending.current) return;
+    setSubmitted(true);
+    showMessage('');
+    const invalid = firstInvalidRequired();
+    if (invalid) {
+      showMessage(`${invalidFieldMessage(invalid)} Corrija este campo antes de salvar.`);
+      focusField(invalid);
+      return;
+    }
+    const { imageFile, __savedId, __uploadPending, ...payload } = form;
+    if (__uploadPending && !(imageFile instanceof File)) {
+      showMessage('O vinho já foi salvo. Selecione novamente a foto pendente para concluir o envio.');
+      setServerErrors({ imageFile: 'Selecione a foto novamente.' }); focusField({ name: 'imageFile' }); return;
+    }
+    sending.current = true; setBusy(true); onBusyChange(true); setServerErrors({});
+    try {
+      const saved = await saveWithImage({
+        save: onSave, payload, previousId: __savedId,
+        file: config.key === 'vinhos' && imageFile instanceof File ? imageFile : undefined,
+        upload: (id, file) => api.uploadWineImage(String(id), file),
+        remember: id => {
+          const draft = { ...form, __savedId: id, __uploadPending: true };
+          setForm(draft);
+          try { sessionStorage.setItem(draftKey, JSON.stringify(draftPayload(draft))); } catch { /* keep in-memory retry */ }
+        },
+      });
+      setForm({});
+      clearDraft(draftKey);
+      showMessage('Cadastro salvo com sucesso.');
+      await onSaved?.(saved);
+    } catch(err) {
+      showMessage(err.message);
+      if (err instanceof ApiError) {
+        const fields = Object.fromEntries(err.issues.map(issue => [String(issue.path[0]), issue.message]));
+        setServerErrors(fields);
+        const first = config.fields.find(field => fields[field.name] && !field.disabled);
+        if (first) focusField(first);
+      }
+    } finally { sending.current = false; setBusy(false); onBusyChange(false); }
+  }
+
+  async function generateQrCode() {
+    const availability = batchQrAvailability(initialData?.id);
+    if (!availability.canGenerate) {
+      setQrFeedback({ type: 'status', text: availability.message });
+      return;
+    }
+    setQrBusy(true);
+    onBusyChange(true);
+    setQrFeedback({ type: 'status', text: 'Gerando e vinculando o QR Code ao lote…' });
+    try {
+      const result = await api.generateBatchQr(String(initialData.id));
+      setForm((current) => ({
+        ...current,
+        qrCode: result.path,
+        qrCodeGeneratedAt: result.generatedAt,
+      }));
+      setQrFeedback({
+        type: 'success',
+        text: 'QR Code gerado com sucesso. Ele já está vinculado a este lote e disponível para consulta.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível gerar o QR Code. Tente novamente.';
+      setQrFeedback({ type: 'error', text: message });
+    } finally {
+      setQrBusy(false);
+      onBusyChange(false);
+      setQrConfirmation(false);
+    }
+  }
+
+  return <form className="min-h-full flex flex-col" onSubmit={submit} noValidate aria-busy={busy || qrBusy}>
+    <fieldset disabled={busy || qrBusy} className="contents">
+    <div className="flex items-center gap-[clamp(12px,1vw,16px)] min-w-0">
+      <span className="w-[clamp(58px,4.8vw,68px)] h-[clamp(58px,4.8vw,68px)] border border-[#e5c99d] rounded-full grid place-items-center shrink-0"><img className="w-[70%] h-[70%] object-contain" src={config.icon} alt="" /></span>
+      <div><h2 className="mt-0 mb-[5px] font-playfair text-[#6a1424] text-[clamp(21px,1.7vw,25px)] font-semibold">{config.formTitle}</h2><p className="m-0 text-[#746e6b] text-[clamp(12px,0.95vw,14px)] leading-[1.35]">{config.formSubtitle}</p></div>
+    </div>
+
+    <div className="w-full my-3 mb-[18px] flex items-center justify-center pointer-events-none"><img className="block w-[106%] max-w-none h-auto max-h-9 object-contain object-center select-none" src={dividerLarge} alt="" aria-hidden="true" /></div>
+
+    {config.sectionTitle && <div className="mb-4 border-l-[3px] border-[#9d4b5b] pl-3">
+      <h3 className="m-0 text-[clamp(16px,1.2vw,19px)] font-semibold text-[#6a1424]">{config.sectionTitle}</h3>
+      {config.sectionSubtitle && <p className="mt-1 mb-0 text-[12px] text-[#857d79]">{config.sectionSubtitle}</p>}
+    </div>}
+
+    <div className="grid grid-cols-2 max-sm:grid-cols-1 gap-y-[clamp(14px,1.25vw,18px)] gap-x-[clamp(22px,2.5vw,38px)] max-[1450px]:gap-y-[14px] max-[1450px]:gap-x-6">
+      {(config.blockchainInfo ? config.fields.filter((field) => field.name !== 'registrationDate') : config.fields).map((f)=>{
+        if (config.key === 'lotes' && f.name === 'vintageId') {
+          const options = f.options.filter((option) => option.wineId === String(form.wineId ?? ''));
+          f = {
+            ...f,
+            options,
+            note: form.wineId && options.length === 0
+              ? 'Este vinho ainda não possui safra cadastrada. Abra Safra no menu para cadastrar uma antes de criar o lote.'
+              : f.note,
+          };
+        }
+        const wrapper = f.full
+          ? `min-w-0 col-span-2 max-sm:col-span-1 ${f.action ? 'grid grid-cols-[minmax(0,1fr)_auto] gap-[14px] items-end' : ''}`
+          : 'min-w-0';
+        const unlocked = true;
+        const invalid = Boolean(serverErrors[f.name]) || ((touched[f.name] || submitted) && !fieldValidity[f.name]);
+        return <div key={f.name} className={wrapper}>
+          <div className={f.action ? 'col-start-1 col-end-2' : ''}><FormField field={f} value={form[f.name]} existingImage={f.type === 'file' ? String(initialData?.imageName ?? '') : ''} onChange={change} valid={fieldValidity[f.name]} invalid={invalid} error={serverErrors[f.name] || (invalid ? invalidFieldMessage(f) : '')} unlocked={unlocked} onRequestFocus={()=>{}}/></div>
+          {f.action && <button type="button" disabled={f.disabled} className={`col-start-2 col-end-3 row-start-1 self-end mb-6 h-[clamp(44px,4.6vh,48px)] px-[clamp(15px,1.4vw,22px)] border-[1.5px] rounded-[6px] font-bold flex items-center gap-[9px] whitespace-nowrap transition-[transform,box-shadow,background-color,border-color,color] duration-150 ${f.disabled ? 'border-[#cfc7c4] bg-[#f4f1ef] text-[#9e9692] opacity-60 cursor-not-allowed' : 'border-[#8e1e35] bg-white text-[#7a1a2d] hover:bg-[#fff8f6] hover:border-[#8f2940] hover:text-[#75172a] hover:shadow-[0_5px_13px_rgba(91,12,27,.10)] hover:-translate-y-px active:translate-y-0 active:scale-[.98] focus-visible:outline-[3px] focus-visible:outline-[rgba(194,137,57,.42)] focus-visible:outline-offset-2'}`}><img className="w-[22px] h-[22px] object-contain" src={linkIcon} alt="" />{f.action}</button>}
+        </div>;
+      })}
+    </div>
+
+    {config.blockchainInfo && <div className="mt-2 flex flex-wrap gap-[clamp(10px,1vw,14px)] border-b border-[#ece6e1] pb-[clamp(15px,1.5vw,20px)]">
+      <button className="min-w-[clamp(200px,18vw,230px)] min-h-12 h-[clamp(48px,5vh,54px)] rounded-[7px] px-[clamp(16px,1.5vw,24px)] flex items-center justify-center gap-[10px] text-[clamp(13px,1vw,15px)] cursor-pointer border-0 bg-[linear-gradient(100deg,#8f0826,#5d0c1c)] text-white transition-[transform,box-shadow,filter] duration-150 hover:brightness-[1.08] hover:shadow-[0_7px_16px_rgba(105,10,31,.22)] hover:-translate-y-px active:translate-y-0 active:scale-[.98] focus-visible:outline-[3px] focus-visible:outline-[rgba(194,137,57,.42)] focus-visible:outline-offset-2" type="submit"><img className="w-[25px] h-[25px] object-contain" src={saveIcon} alt=""/>{busy ? 'Salvando…' : initialData?.id || form.__savedId ? 'Salvar alterações' : 'Salvar cadastro'}</button>
+      <button type="button" className={secondaryButton} onClick={clearForm}><img className="w-[25px] h-[25px] object-contain" src={clearIcon} alt=""/>Limpar</button>
+      <button type="button" className={secondaryButton} onClick={cancelForm}><img className="w-[25px] h-[25px] object-contain" src={cancelIcon} alt=""/>Cancelar</button>
+    </div>}
+
+    {config.blockchainInfo && <div className="mt-[clamp(15px,1.5vw,20px)] grid grid-cols-[minmax(220px,.65fr)_minmax(0,1.35fr)] items-start gap-x-[clamp(22px,2.5vw,38px)] gap-y-[clamp(14px,1.25vw,18px)] max-md:grid-cols-1">
+      <button type="button" className={`${secondaryButton} w-full`} disabled title="Reservado para trabalhos futuros"><img className="w-[25px] h-[25px] object-contain" src={linkIcon} alt=""/>Registrar na blockchain</button>
+      <button
+        type="button"
+        className={`${secondaryButton} w-full`}
+        disabled={qrBusy || Boolean(form.qrCodeGeneratedAt)}
+        title={!initialData?.id ? 'Salve o lote antes de gerar o QR Code' : undefined}
+        onClick={() => {
+          setQrFeedback(null);
+          const availability = batchQrAvailability(initialData?.id);
+          if (!availability.canGenerate) {
+            setQrFeedback({ type: 'status', text: availability.message });
+            return;
+          }
+          setQrConfirmation(true);
+        }}
+      >
+        <img className="w-[25px] h-[25px] object-contain" src={qrIcon} alt=""/>
+        {qrBusy ? 'Gerando QR Code…' : form.qrCodeGeneratedAt ? 'QR Code gerado' : 'Gerar QR Code'}
+      </button>
+      {config.fields.filter((field) => field.name === 'registrationDate').map((field) => <FormField key={field.name} field={field} value={form[field.name]} valid={fieldValidity[field.name]} invalid={false} unlocked={true} onChange={change} onRequestFocus={() => {}} />)}
+      <div className="flex min-h-[150px] items-center justify-center rounded-[10px] border border-dashed border-[#d8b77f] bg-[#fffdf9] p-4" aria-live="polite">
+        {qrBusy ? (
+          <span className="max-w-sm text-center text-[12px] leading-relaxed text-[#857d79]" role="status">Gerando QR Code…</span>
+        ) : form.qrCode ? (
+          <img className="h-32 w-32 object-contain" src={String(form.qrCode)} alt="QR Code do lote" />
+        ) : (
+          <span className="max-w-sm text-center text-[12px] leading-relaxed text-[#857d79]">Este lote ainda não possui QR Code.</span>
+        )}
+      </div>
+    </div>}
+
+    {config.blockchainInfo && qrFeedback && (
+      <p
+        className={`mt-3 mb-0 rounded-[9px] border px-4 py-3 text-[13px] leading-[1.45] ${
+          qrFeedback.type === 'error'
+            ? 'border-[#d9a4a4] bg-[#fff5f5] text-[#8f1f2c]'
+            : qrFeedback.type === 'success'
+              ? 'border-[#b8ceb2] bg-[#f7fff5] text-[#315b2d]'
+              : 'border-[#e2c28d] bg-[#fffaf2] text-[#71511f]'
+        }`}
+        role={qrFeedback.type === 'error' ? 'alert' : 'status'}
+      >
+        {qrFeedback.text}
+      </p>
+    )}
+
+    {config.blockchainInfo && <div className="mt-[clamp(12px,1.2vw,16px)] flex items-center gap-3 rounded-[9px] border border-[#e4bd84] bg-[#fffaf4] px-[clamp(14px,1.4vw,18px)] py-2.5">
+      <img className="h-9 w-9 shrink-0 object-contain" src={blockchainIcon} alt=""/>
+      <p className="m-0 flex min-w-0 items-baseline gap-2 text-[12px] leading-[1.35]"><b className="shrink-0 text-[#302627]">Blockchain:</b><span className="text-[#5f5651]">Ao registrar na blockchain, as informações do lote serão armazenadas futuramente de forma imutável.</span></p>
+    </div>}
+
+    {!config.blockchainInfo && <div className="flex flex-wrap gap-[clamp(10px,1vw,14px)] mt-[clamp(18px,2vw,26px)] pt-[clamp(15px,1.5vw,20px)] border-t border-[#ece6e1] max-[1450px]:mt-[18px] max-[1450px]:pt-[15px]">
+      <button className="min-w-[clamp(200px,18vw,230px)] min-h-12 h-[clamp(48px,5vh,54px)] rounded-[7px] px-[clamp(16px,1.5vw,24px)] flex items-center justify-center gap-[10px] text-[clamp(13px,1vw,15px)] cursor-pointer border-0 bg-[linear-gradient(100deg,#8f0826,#5d0c1c)] text-white transition-[transform,box-shadow,filter] duration-150 hover:brightness-[1.08] hover:shadow-[0_7px_16px_rgba(105,10,31,.22)] hover:-translate-y-px active:translate-y-0 active:scale-[.98] focus-visible:outline-[3px] focus-visible:outline-[rgba(194,137,57,.42)] focus-visible:outline-offset-2" type="submit"><img className="w-[25px] h-[25px] object-contain" src={saveIcon} alt=""/>{busy ? 'Salvando…' : initialData?.id || form.__savedId ? 'Salvar alterações' : 'Salvar cadastro'}</button>
+      <button type="button" className={secondaryButton} onClick={clearForm}><img className="w-[25px] h-[25px] object-contain" src={clearIcon} alt=""/>Limpar</button>
+      <button type="button" className={secondaryButton} onClick={cancelForm}><img className="w-[25px] h-[25px] object-contain" src={cancelIcon} alt=""/>Cancelar</button>
+    </div>}
+    </fieldset>
+    <ConfirmDialog
+      open={qrConfirmation}
+      title="Gerar QR Code deste lote?"
+      description={'O QR Code abrirá a consulta pública deste lote. Depois de gerado, o código do lote não poderá ser alterado para evitar que o QR Code impresso deixe de funcionar.\n\nConfirme somente se os dados e o código do lote estiverem corretos.'}
+      cancelLabel="Revisar dados"
+      confirmLabel="Gerar QR Code"
+      pending={qrBusy}
+      pendingLabel="Gerando QR Code…"
+      variant="warning"
+      onCancel={() => setQrConfirmation(false)}
+      onConfirm={() => void generateQrCode()}
+    />
+    <ConfirmDialog
+      open={pendingConfirmation !== null}
+      title={pendingConfirmation === 'cancel' ? 'Sair sem salvar?' : 'Limpar formulário?'}
+      description={
+        pendingConfirmation === 'cancel'
+          ? 'Existem dados preenchidos. O rascunho será descartado ao sair deste cadastro.'
+          : form.__savedId
+            ? 'O vinho já foi salvo. Limpar o formulário não exclui o cadastro; o envio da foto ficará pendente.'
+            : 'Todos os campos preenchidos e este rascunho serão descartados.'
+      }
+      cancelLabel="Continuar editando"
+      confirmLabel={pendingConfirmation === 'cancel' ? 'Sair sem salvar' : 'Limpar formulário'}
+      variant="destructive"
+      onCancel={() => setPendingConfirmation(null)}
+      onConfirm={() => {
+        if (pendingConfirmation === 'cancel') performCancel();
+        else if (pendingConfirmation === 'clear') performClear();
+        setPendingConfirmation(null);
+      }}
+    />
+  </form>;
+}

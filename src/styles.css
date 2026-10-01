@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+
+/* Fit the administrative shell to tablets; tables retain their own scrolling. */
+@media (max-width: 1250px) {
+  .admin-page > div {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* O catálogo tem foto acima dos dados, independentemente dos cards do cliente. */
+#vinhos article.home-wine-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  background: #fff;
+}
+
+#vinhos article.home-wine-card::before {
+  content: none;
+}
+
+/* Ações dos formulários ficam compactas, sem ocupar a linha inteira. */
+.client-section-page form > button {
+  width: fit-content;
+  min-width: 150px;
+}
+
+/* Feedback discreto e consistente nas ações da área do cliente. */
+.client-section-page :is(button, a) {
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    opacity 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+@media (hover: hover) {
+  .client-section-page :is(button, a):not(:disabled):hover {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+    box-shadow: 0 6px 14px rgb(91 12 27 / 14%);
+  }
+}
+
+.client-section-page :is(button, a):not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 6px rgb(91 12 27 / 12%);
+}
+
+.client-section-page :is(button, a):focus-visible {
+  outline: 3px solid #d0a565;
+  outline-offset: 3px;
+}
+
+.client-section-page button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .client-section-page :is(button, a) {
+    transition: none;
+  }
+}
+
+main table th:last-child,
+main table td:last-child {
+  width: 220px;
+  white-space: nowrap;
+}
+
+main table td:nth-child(4) {
+  white-space: nowrap;
+}
+
+@theme {
+  --font-inter: 'Inter', Arial, sans-serif;
+  --font-playfair: 'Playfair Display', Georgia, 'Times New Roman', serif;
+
+  --color-vinum-burgundy: #5b0c1b;
+  --color-vinum-wine: #851329;
+  --color-vinum-gold: #d0a565;
+  --color-vinum-text: #2c2223;
+}
+
+/* Resumo exclusivo do estoque do cliente. */
+.inventory-stock-total {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 16px 24px;
+  border: 1px solid #d9bd91;
+  border-left: 5px solid #7d1d2d;
+  border-radius: 16px;
+  background: #faf3e8;
+  color: #5b0c1b;
+}
+
+.inventory-stock-total__number {
+  font-family: 'Inter', Arial, sans-serif;
+  font-size: clamp(36px, 4vw, 52px);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.inventory-stock-total__label {
+  font-family: 'Inter', Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.inventory-stock-total__detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #715f59;
+}
+
+/* Feedback visual consistente para campos inválidos após interação ou envio. */
+label:has(input:user-invalid) > span:has(input),
+label:has(textarea:user-invalid) > span:has(textarea),
+label:has(select:user-invalid) > span:has(select) {
+  border-color: #c9343d !important;
+  background-color: #fff7f7 !important;
+  box-shadow: 0 0 0 3px rgb(201 52 61 / 12%);
+}
+
+label:has(input:user-invalid) > input,
+label:has(textarea:user-invalid) > textarea,
+label:has(select:user-invalid) > select {
+  border-color: #c9343d !important;
+  background-color: #fff7f7 !important;
+  box-shadow: 0 0 0 3px rgb(201 52 61 / 12%);
+}
