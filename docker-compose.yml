@@ -3,31 +3,57 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: vinum
-      POSTGRES_USER: vinum
+      POSTGRES_DB: ${POSTGRES_DB:?Configure POSTGRES_DB no .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Configure POSTGRES_USER no .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no .env}
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:?Configure POSTGRES_HOST_PORT no .env}:5432"
     volumes:
       - vinum_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vinum -d vinum"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  pgadmin:
-    image: dpage/pgadmin4:8
+  api:
+    profiles: [app]
+    build:
+      context: .
+      target: api
     restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@vinum.com
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Configure PGADMIN_DEFAULT_PASSWORD no .env}
+    env_file: .env
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     ports:
-      - "127.0.0.1:5051:80"
+      - "127.0.0.1:${PORT:?Configure PORT no .env}:${PORT:?Configure PORT no .env}"
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      target: web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   vinum_postgres_data:
-    name: vinum-tcc-prototipo-local_vinum_postgres_data
+    name: ${POSTGRES_VOLUME_NAME:?Configure POSTGRES_VOLUME_NAME no .env}

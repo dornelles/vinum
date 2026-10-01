@@ -115,10 +115,10 @@ try {
         await isolated.end();
         current = new pg.Pool({ connectionString: currentUrl });
         isolated = new pg.Pool({ connectionString: isolatedUrl.toString() });
-        const restart = spawnSync('docker', ['compose', 'restart', 'postgres', 'pgadmin'], { stdio: 'inherit', timeout: 60000 });
+        const restart = spawnSync('docker', ['compose', 'restart', 'postgres'], { stdio: 'inherit', timeout: 60000 });
         assert.equal(restart.status, 0);
         // Wait for readiness via pg_isready, never delete/recreate the volume.
-        const ready = spawnSync('docker', ['compose', 'exec', '-T', 'postgres', 'sh', '-c', 'for i in $(seq 1 30); do pg_isready -U vinum -d vinum && exit 0; sleep 1; done; exit 1'], { stdio: 'inherit', timeout: 35000 });
+        const ready = spawnSync('docker', ['compose', 'exec', '-T', 'postgres', 'sh', '-c', 'for i in $(seq 1 30); do pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" && exit 0; sleep 1; done; exit 1'], { stdio: 'inherit', timeout: 35000 });
         assert.equal(ready.status, 0);
       }
       assert.deepEqual(await fingerprints(current), realBeforeRestart);
@@ -134,7 +134,7 @@ try {
       await request(app).get(photoPath).set(headers).expect(200);
       const account = (await request(app).get('/api/admin/cadastro').set('Authorization', `Bearer ${adminToken}`).expect(200)).body;
       assert.equal(account.winery.phone, profileInput.phone);
-      console.log(`PASS: ${process.argv.includes('--restart') ? 'restart de PostgreSQL/pgAdmin, ' : ''}fingerprints intactos; perfil, pedido, estoque, foto e cadastro administrativo persistentes após novo login.`);
+      console.log(`PASS: ${process.argv.includes('--restart') ? 'restart de PostgreSQL, ' : ''}fingerprints intactos; perfil, pedido, estoque, foto e cadastro administrativo persistentes após novo login.`);
     } finally {
       await unlink(join(uploadsRoot, 'inventory', basename(photoPath)));
     }
