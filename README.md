@@ -6,10 +6,11 @@ Aplicação acadêmica da única vinícola administradora VINUM. O catálogo pub
 
 Requisitos: Node.js 22+, npm e Docker Desktop. Na primeira instalação, copie `.env.example` para `.env` e substitua todos os exemplos de senha. Nunca sobrescreva um `.env` já configurado.
 
-- `DATABASE_URL`: PostgreSQL em localhost:5433, banco e usuário `vinum`; senha igual a `POSTGRES_PASSWORD` (codificada como URL quando necessário).
-- `POSTGRES_PASSWORD` e `PGADMIN_DEFAULT_PASSWORD`: apenas para inicialização dos respectivos serviços; mudar essas variáveis não troca senhas em bancos já existentes.
+- `DATABASE_URL`: conexão usada pela API; deve corresponder a `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_HOST_PORT`. Codifique a senha na URL quando necessário.
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_HOST_PORT` e `POSTGRES_VOLUME_NAME`: definem banco, usuário, porta local e volume do PostgreSQL. Em staging e produção, use valores distintos para isolar os ambientes.
+- `POSTGRES_PASSWORD`: usada somente para inicializar o PostgreSQL; mudá-la não troca a senha de um banco já existente.
 - `ADMIN_INITIAL_EMAIL` e `ADMIN_INITIAL_PASSWORD`: criação inicial do administrador. A senha deve ter pelo menos 12 caracteres. Contas existentes não são redefinidas pelo seed.
-- `PORT=3001`, `VITE_API_URL=/api`.
+- `PORT=3001`: porta interna da API. `VITE_API_URL=/api`: caminho da API no frontend. `VITE_DEV_PORT=5173`: porta do servidor Vite, usada somente em desenvolvimento.
 
 ```bash
 npm install
@@ -34,8 +35,6 @@ npm run dev
 - Aplicação: http://localhost:5173
 - API/saúde: http://localhost:3001/api/health
 - Documentação da API: http://localhost:3001/api/docs
-- pgAdmin: http://localhost:5051 (e-mail inicial `admin@vinum.com`).
-- No pgAdmin em Docker, conecte ao host `postgres`, porta `5432`, banco/usuário `vinum`.
 - Na máquina host, a porta do PostgreSQL é `5433`.
 - Para encerrar o desenvolvimento, use Ctrl+C no terminal de cada serviço. Não encerre indiscriminadamente todos os processos Node.
 
