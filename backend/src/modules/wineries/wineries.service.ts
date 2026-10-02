@@ -29,7 +29,10 @@ export const wineriesService = {
     return wineries.map(toView);
   },
   async create(_input: Record<string, unknown>) {
-    throw new AppError(409, 'O VINUM possui uma única vinícola. Atualize o cadastro existente em Meu cadastro.');
+    throw new AppError(
+      409,
+      'O VINUM possui uma única vinícola. Atualize o cadastro existente em Meu cadastro.',
+    );
   },
   async update(id: string, input: Record<string, unknown>) {
     const data: Prisma.WineryUpdateInput = {};

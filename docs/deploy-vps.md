@@ -6,10 +6,10 @@ O host precisa de Docker, Docker Compose e Nginx; Node.js e npm ficam nas imagen
 
 Além das variáveis de banco e aplicação descritas em `.env.example`, configure:
 
-| Ambiente | `PORT` (API) | `FRONTEND_HOST_PORT` | `POSTGRES_HOST_PORT` | `PUBLIC_APP_URL` |
-| --- | ---: | ---: | ---: | --- |
-| Staging | `3006` | `5176` | `5436` | `https://vinum-staging.bitrium.com.br` |
-| Produção | `3005` | `5175` | `5435` | `https://vinum.bitrium.com.br` |
+| Ambiente | `PORT` (API) | `FRONTEND_HOST_PORT` | `POSTGRES_HOST_PORT` | `PUBLIC_APP_URL`                       |
+| -------- | -----------: | -------------------: | -------------------: | -------------------------------------- |
+| Staging  |       `3006` |               `5176` |               `5436` | `https://vinum-staging.bitrium.com.br` |
+| Produção |       `3005` |               `5175` |               `5435` | `https://vinum.bitrium.com.br`         |
 
 Use `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_VOLUME_NAME` diferentes em cada ambiente. A `DATABASE_URL` continua usando `localhost` e a porta publicada do banco, por exemplo `localhost:5436` em staging. Ao iniciar, o container da API troca somente o host e a porta dessa URL por `postgres:5432`; a senha e o banco permanecem os mesmos.
 

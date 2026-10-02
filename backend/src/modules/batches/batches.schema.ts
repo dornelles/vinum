@@ -31,7 +31,11 @@ const batchBaseSchema = z.object({
   grapeIds: z.array(z.string().trim().min(1)).min(1, 'Selecione pelo menos uma uva.').optional(),
   quantity: positiveNumber,
   productionDate: date,
-  status: z.enum(['Aguardando registro', 'Registrado na blockchain', 'Publicado para consulta no banco de dados']),
+  status: z.enum([
+    'Aguardando registro',
+    'Registrado na blockchain',
+    'Publicado para consulta no banco de dados',
+  ]),
   blockchain: z.string().trim().optional(),
   qrCode: z.string().trim().optional(),
 });

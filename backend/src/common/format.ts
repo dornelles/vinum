@@ -25,13 +25,19 @@ export function toPtDate(value: Date) {
 }
 
 export function normalizeBatchCode(value: string) {
-  const raw = String(value ?? '').trim().toUpperCase();
+  const raw = String(value ?? '')
+    .trim()
+    .toUpperCase();
   const digits = raw.replace(/\D/g, '').slice(0, 5);
   return digits ? `L${digits}` : '';
 }
 
 export function isBatchCode(value: string) {
-  const match = /^L\d{2}(\d{3})$/.exec(String(value ?? '').trim().toUpperCase());
+  const match = /^L\d{2}(\d{3})$/.exec(
+    String(value ?? '')
+      .trim()
+      .toUpperCase(),
+  );
   if (!match) return false;
   const year = 2000 + Number(String(value).slice(1, 3));
   const dayOfYear = Number(match[1]);
@@ -40,7 +46,9 @@ export function isBatchCode(value: string) {
 }
 
 export function batchCodeToProductionDate(value: string) {
-  const normalized = String(value ?? '').trim().toUpperCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toUpperCase();
   if (!isBatchCode(normalized)) return null;
   const year = 2000 + Number(normalized.slice(1, 3));
   const dayOfYear = Number(normalized.slice(3));
@@ -50,18 +58,26 @@ export function batchCodeToProductionDate(value: string) {
 }
 
 export function normalizeVintageIdentifier(value: string) {
-  const raw = String(value ?? '').trim().toUpperCase();
+  const raw = String(value ?? '')
+    .trim()
+    .toUpperCase();
   const digits = raw.replace(/\D/g, '').slice(0, 4);
   if (digits.length <= 2) return digits ? `SF${digits}` : '';
   return `SF${digits.slice(0, 2)}-T${digits.slice(2)}`;
 }
 
 export function isVintageIdentifier(value: string) {
-  return /^SF\d{2}-T\d{2}$/.test(String(value ?? '').trim().toUpperCase());
+  return /^SF\d{2}-T\d{2}$/.test(
+    String(value ?? '')
+      .trim()
+      .toUpperCase(),
+  );
 }
 
 export function vintageIdentifierToYear(value: string) {
-  const normalized = String(value ?? '').trim().toUpperCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toUpperCase();
   if (!isVintageIdentifier(normalized)) return null;
   return 2000 + Number(normalized.slice(2, 4));
 }

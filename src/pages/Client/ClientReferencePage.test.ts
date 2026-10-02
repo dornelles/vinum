@@ -62,10 +62,13 @@ function render(kind: 'winery' | 'wine' | 'location') {
       },
     ],
   );
-  client.setQueryData(['customer-grapes'], [
-    { id: 'malbec', name: 'Malbec' },
-    { id: 'merlot', name: 'Merlot' },
-  ]);
+  client.setQueryData(
+    ['customer-grapes'],
+    [
+      { id: 'malbec', name: 'Malbec' },
+      { id: 'merlot', name: 'Merlot' },
+    ],
+  );
   const html = renderToStaticMarkup(
     createElement(
       QueryClientProvider,

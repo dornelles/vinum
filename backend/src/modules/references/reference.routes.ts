@@ -25,7 +25,9 @@ export function createReferenceRouter(kind: ReferenceKind) {
     '/:id',
     requireRoles('ADMIN', 'EDITOR'),
     asyncRoute(async (req, res) => {
-      res.json(await referenceService.update(kind, String(req.params.id), referenceUpdateSchema.parse(req.body)));
+      res.json(
+        await referenceService.update(kind, String(req.params.id), referenceUpdateSchema.parse(req.body)),
+      );
     }),
   );
   router.delete(

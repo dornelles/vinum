@@ -12,7 +12,15 @@ beforeAll(async () => {
   await ensureSeedAdmin();
   const role = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMIN' } });
   const winery = await prisma.winery.findFirstOrThrow();
-  await prisma.user.create({ data: { name: 'Teste API', email: adminEmail, passwordHash: await bcrypt.hash(adminPassword, 4), roleId: role.id, wineryId: winery.id } });
+  await prisma.user.create({
+    data: {
+      name: 'Teste API',
+      email: adminEmail,
+      passwordHash: await bcrypt.hash(adminPassword, 4),
+      roleId: role.id,
+      wineryId: winery.id,
+    },
+  });
 });
 afterAll(async () => {
   await prisma.user.deleteMany({ where: { email: adminEmail } });

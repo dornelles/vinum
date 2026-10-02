@@ -31,7 +31,14 @@ export default function BatchPublicPage() {
   if (error || !batch) {
     return (
       <main className="mx-auto min-h-screen max-w-2xl bg-[#f7f2eb] px-5 py-16 text-center text-[#5b0c1b]">
-        <QueryFeedback error={error} fetching={isFetching} empty={!error} emptyText="Lote não encontrado." notFoundText="Este lote não foi encontrado ou não está publicado. Confira o código informado." retry={() => void refetch()} />
+        <QueryFeedback
+          error={error}
+          fetching={isFetching}
+          empty={!error}
+          emptyText="Lote não encontrado."
+          notFoundText="Este lote não foi encontrado ou não está publicado. Confira o código informado."
+          retry={() => void refetch()}
+        />
         <Link className="mt-6 inline-block font-semibold text-[#851329]" to="/">
           Voltar para a página inicial
         </Link>
@@ -91,9 +98,7 @@ export default function BatchPublicPage() {
                 {batch.wine.winery && (
                   <div className="sm:col-span-2">
                     <dt className="font-semibold text-[#5b0c1b]">Vinícola</dt>
-                    <dd className="mt-1 text-[#715f59]">
-                      {formatWineryOrigin(batch.wine.winery)}
-                    </dd>
+                    <dd className="mt-1 text-[#715f59]">{formatWineryOrigin(batch.wine.winery)}</dd>
                   </div>
                 )}
               </dl>

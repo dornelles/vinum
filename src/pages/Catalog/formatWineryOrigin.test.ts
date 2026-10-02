@@ -7,10 +7,14 @@ describe('formatWineryOrigin', () => {
   });
 
   it('preserva cidade e UF quando informadas', () => {
-    expect(formatWineryOrigin({ name: 'Vinum', city: 'Bento Gonçalves', state: 'RS' })).toBe('Vinum · Bento Gonçalves/RS');
+    expect(formatWineryOrigin({ name: 'Vinum', city: 'Bento Gonçalves', state: 'RS' })).toBe(
+      'Vinum · Bento Gonçalves/RS',
+    );
   });
 
   it('usa apenas a parte disponível da localização', () => {
-    expect(formatWineryOrigin({ name: 'Vinum', city: 'Bento Gonçalves', state: '' })).toBe('Vinum · Bento Gonçalves');
+    expect(formatWineryOrigin({ name: 'Vinum', city: 'Bento Gonçalves', state: '' })).toBe(
+      'Vinum · Bento Gonçalves',
+    );
   });
 });

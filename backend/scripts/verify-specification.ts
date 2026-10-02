@@ -18,17 +18,34 @@ let isolated = new pg.Pool({ connectionString: isolatedUrl.toString() });
 current.on('error', () => undefined);
 isolated.on('error', () => undefined);
 const password = `Spec1!${randomUUID()}`;
-const env = { ...process.env, DATABASE_URL: isolatedUrl.toString(), ADMIN_INITIAL_EMAIL: 'spec-admin@example.test', ADMIN_INITIAL_PASSWORD: password };
+const env = {
+  ...process.env,
+  DATABASE_URL: isolatedUrl.toString(),
+  ADMIN_INITIAL_EMAIL: 'spec-admin@example.test',
+  ADMIN_INITIAL_PASSWORD: password,
+};
 function run(file: string, args: string[], childEnv = process.env) {
-  const result = spawnSync(process.execPath, [resolve(file), ...args], { env: childEnv, stdio: 'inherit', timeout: 120000 });
+  const result = spawnSync(process.execPath, [resolve(file), ...args], {
+    env: childEnv,
+    stdio: 'inherit',
+    timeout: 120000,
+  });
   assert.equal(result.status, 0, `Falha em ${file}; nenhum reset foi executado.`);
 }
 async function fingerprints(pool: pg.Pool) {
-  const tables = (await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('_prisma_migrations','sessao') ORDER BY tablename")).rows;
+  const tables = (
+    await pool.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('_prisma_migrations','sessao') ORDER BY tablename",
+    )
+  ).rows;
   const result: Record<string, unknown> = {};
   for (const { tablename } of tables) {
     const name = '"' + String(tablename).replaceAll('"', '""') + '"';
-    result[tablename] = (await pool.query(`SELECT count(*)::int AS count, md5(COALESCE(string_agg(to_jsonb(t)::text, E'\n' ORDER BY to_jsonb(t)::text), '')) AS hash FROM ${name} t`)).rows[0];
+    result[tablename] = (
+      await pool.query(
+        `SELECT count(*)::int AS count, md5(COALESCE(string_agg(to_jsonb(t)::text, E'\n' ORDER BY to_jsonb(t)::text), '')) AS hash FROM ${name} t`,
+      )
+    ).rows[0];
   }
   return result;
 }
@@ -78,30 +95,112 @@ try {
   const winery = await prisma.winery.findFirstOrThrow();
   try {
     const role = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMIN' } });
-    adminId = (await prisma.user.create({ data: { name: 'Administrador de teste', email: adminEmail, passwordHash: await bcrypt.hash(password, 4), roleId: role.id, wineryId: winery.id } })).id;
-    const adminToken = (await request(app).post('/api/auth/login').send({ email: adminEmail, password }).expect(200)).body.token;
+    adminId = (
+      await prisma.user.create({
+        data: {
+          name: 'Administrador de teste',
+          email: adminEmail,
+          passwordHash: await bcrypt.hash(password, 4),
+          roleId: role.id,
+          wineryId: winery.id,
+        },
+      })
+    ).id;
+    const adminToken = (
+      await request(app).post('/api/auth/login').send({ email: adminEmail, password }).expect(200)
+    ).body.token;
     const hashBefore = (await prisma.user.findUniqueOrThrow({ where: { id: adminId } })).passwordHash;
-    const profileInput = { wineryId: winery.id, name: 'VINUM validação isolada', cnpj: '12.345.678/0001-90', city: 'Bento Gonçalves', state: 'RS', contactEmail: 'contato@example.test', accountName: 'Responsável teste', loginEmail: adminEmail, phone: '(54) 3000-0000', newPassword: '' };
-    const updated = await request(app).put('/api/admin/cadastro').set('Authorization', `Bearer ${adminToken}`).send(profileInput).expect(200);
+    const profileInput = {
+      wineryId: winery.id,
+      name: 'VINUM validação isolada',
+      cnpj: '12.345.678/0001-90',
+      city: 'Bento Gonçalves',
+      state: 'RS',
+      contactEmail: 'contato@example.test',
+      accountName: 'Responsável teste',
+      loginEmail: adminEmail,
+      phone: '(54) 3000-0000',
+      newPassword: '',
+    };
+    const updated = await request(app)
+      .put('/api/admin/cadastro')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(profileInput)
+      .expect(200);
     assert.equal(updated.body.winery.id, winery.id);
     assert.equal(updated.body.winery.phone, profileInput.phone);
     assert.equal(await prisma.winery.count(), 1);
     assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: adminId } })).passwordHash, hashBefore);
     const changedPassword = `Changed1!${randomUUID()}`;
-    await request(app).put('/api/admin/cadastro').set('Authorization', `Bearer ${adminToken}`)
-      .send({ ...profileInput, currentPassword: password, newPassword: changedPassword, confirmPassword: changedPassword }).expect(200);
-    assert(await bcrypt.compare(changedPassword, (await prisma.user.findUniqueOrThrow({ where: { id: adminId } })).passwordHash));
+    await request(app)
+      .put('/api/admin/cadastro')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        ...profileInput,
+        currentPassword: password,
+        newPassword: changedPassword,
+        confirmPassword: changedPassword,
+      })
+      .expect(200);
+    assert(
+      await bcrypt.compare(
+        changedPassword,
+        (await prisma.user.findUniqueOrThrow({ where: { id: adminId } })).passwordHash,
+      ),
+    );
     await request(app).post('/api/auth/login').send({ email: adminEmail, password }).expect(401);
-    await request(app).post('/api/auth/login').send({ email: adminEmail, password: changedPassword }).expect(200);
-    console.log('PASS: edição real de vinícola/admin no mesmo ID; senha vazia preservada e nova senha segura.');
+    await request(app)
+      .post('/api/auth/login')
+      .send({ email: adminEmail, password: changedPassword })
+      .expect(200);
+    console.log(
+      'PASS: edição real de vinícola/admin no mesmo ID; senha vazia preservada e nova senha segura.',
+    );
 
-    userId = (await request(app).post('/api/auth/register').send({ name: 'Cliente persistência', email, password }).expect(201)).body.id;
-    const token = (await request(app).post('/api/auth/login').send({ email, password }).expect(200)).body.token;
-    const profile = { name: 'Cliente persistência', birthDate: '1990-05-10', phone: '(54) 90000-0000', street: 'Rua Teste', addressNumber: '10', city: 'Bento Gonçalves', state: 'RS', country: 'Brasil' };
-    await request(app).patch('/api/auth/me').set('Authorization', `Bearer ${token}`).send(profile).expect(200);
-    const order = await request(app).post('/api/cliente/pedidos').set('Authorization', `Bearer ${token}`)
-      .field('payload', JSON.stringify({ source: 'OUTRO_LOCAL', purchaseDate: '2026-09-20', purchaseLocation: 'Mercado isolado', items: [{ wineName: 'Rótulo persistência', quantityBottles: 2 }] }))
-      .attach('photo', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7ioAAAAASUVORK5CYII=', 'base64'), { filename: 'persistencia.png', contentType: 'image/png' }).expect(201);
+    userId = (
+      await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Cliente persistência', email, password })
+        .expect(201)
+    ).body.id;
+    const token = (await request(app).post('/api/auth/login').send({ email, password }).expect(200)).body
+      .token;
+    const profile = {
+      name: 'Cliente persistência',
+      birthDate: '1990-05-10',
+      phone: '(54) 90000-0000',
+      street: 'Rua Teste',
+      addressNumber: '10',
+      city: 'Bento Gonçalves',
+      state: 'RS',
+      country: 'Brasil',
+    };
+    await request(app)
+      .patch('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send(profile)
+      .expect(200);
+    const order = await request(app)
+      .post('/api/cliente/pedidos')
+      .set('Authorization', `Bearer ${token}`)
+      .field(
+        'payload',
+        JSON.stringify({
+          source: 'OUTRO_LOCAL',
+          purchaseDate: '2026-09-20',
+          purchaseLocation: 'Mercado isolado',
+          items: [{ wineName: 'Rótulo persistência', quantityBottles: 2 }],
+        }),
+      )
+      .attach(
+        'photo',
+        Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7ioAAAAASUVORK5CYII=',
+          'base64',
+        ),
+        { filename: 'persistencia.png', contentType: 'image/png' },
+      )
+      .expect(201);
     const { unlink } = await import('node:fs/promises');
     const { uploadsRoot } = await import('../src/common/files.js');
     const { basename, join } = await import('node:path');
@@ -115,10 +214,25 @@ try {
         await isolated.end();
         current = new pg.Pool({ connectionString: currentUrl });
         isolated = new pg.Pool({ connectionString: isolatedUrl.toString() });
-        const restart = spawnSync('docker', ['compose', 'restart', 'postgres'], { stdio: 'inherit', timeout: 60000 });
+        const restart = spawnSync('docker', ['compose', 'restart', 'postgres'], {
+          stdio: 'inherit',
+          timeout: 60000,
+        });
         assert.equal(restart.status, 0);
         // Wait for readiness via pg_isready, never delete/recreate the volume.
-        const ready = spawnSync('docker', ['compose', 'exec', '-T', 'postgres', 'sh', '-c', 'for i in $(seq 1 30); do pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" && exit 0; sleep 1; done; exit 1'], { stdio: 'inherit', timeout: 35000 });
+        const ready = spawnSync(
+          'docker',
+          [
+            'compose',
+            'exec',
+            '-T',
+            'postgres',
+            'sh',
+            '-c',
+            'for i in $(seq 1 30); do pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" && exit 0; sleep 1; done; exit 1',
+          ],
+          { stdio: 'inherit', timeout: 35000 },
+        );
         assert.equal(ready.status, 0);
       }
       assert.deepEqual(await fingerprints(current), realBeforeRestart);
@@ -130,11 +244,18 @@ try {
       for (const [key, value] of Object.entries(profile)) assert.equal(me[key], value);
       const orders = (await request(app).get('/api/cliente/pedidos').set(headers).expect(200)).body;
       assert.equal(orders[0].id, order.body.id);
-      assert.equal((await request(app).get('/api/cliente/estoque').set(headers).expect(200)).body[0].quantityBottles, 2);
+      assert.equal(
+        (await request(app).get('/api/cliente/estoque').set(headers).expect(200)).body[0].quantityBottles,
+        2,
+      );
       await request(app).get(photoPath).set(headers).expect(200);
-      const account = (await request(app).get('/api/admin/cadastro').set('Authorization', `Bearer ${adminToken}`).expect(200)).body;
+      const account = (
+        await request(app).get('/api/admin/cadastro').set('Authorization', `Bearer ${adminToken}`).expect(200)
+      ).body;
       assert.equal(account.winery.phone, profileInput.phone);
-      console.log(`PASS: ${process.argv.includes('--restart') ? 'restart de PostgreSQL, ' : ''}fingerprints intactos; perfil, pedido, estoque, foto e cadastro administrativo persistentes após novo login.`);
+      console.log(
+        `PASS: ${process.argv.includes('--restart') ? 'restart de PostgreSQL, ' : ''}fingerprints intactos; perfil, pedido, estoque, foto e cadastro administrativo persistentes após novo login.`,
+      );
     } finally {
       await unlink(join(uploadsRoot, 'inventory', basename(photoPath)));
     }
