@@ -1,22 +1,57 @@
-name: Deploy Vinum
+name: Test SSH Deploy
 
 on:
   push:
     branches:
       - staging
-      - main
-
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
-  deploy-staging:
-    if: github.ref == 'refs/heads/staging'
+  test-ssh:
+    name: Test SSH connection
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy staging
+      - name: Validate secrets
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          echo "Validando secrets..."
+
+          test -n "$VPS_HOST" || {
+            echo "ERRO: VPS_HOST está vazio"
+            exit 1
+          }
+
+          test -n "$VPS_USER" || {
+            echo "ERRO: VPS_USER está vazio"
+            exit 1
+          }
+
+          test -n "$VPS_PORT" || {
+            echo "ERRO: VPS_PORT está vazio"
+            exit 1
+          }
+
+          test -n "$VPS_SSH_KEY" || {
+            echo "ERRO: VPS_SSH_KEY está vazio"
+            exit 1
+          }
+
+          echo "Secrets carregados corretamente."
+          echo "VPS_USER: $VPS_USER"
+          echo "VPS_PORT: $VPS_PORT"
+
+          echo "Primeira linha da chave:"
+          echo "$VPS_SSH_KEY" | head -n 1
+
+          echo "Última linha da chave:"
+          echo "$VPS_SSH_KEY" | tail -n 1
+
+      - name: Test SSH connection
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -27,82 +62,33 @@ jobs:
             set -e
 
             echo "========================================"
-            echo "INICIANDO DEPLOY STAGING"
+            echo "SSH CONNECTION SUCCESSFUL"
             echo "========================================"
 
-            echo "Usuário:"
+            echo "User:"
             whoami
 
-            echo "Servidor:"
+            echo "Hostname:"
             hostname
 
+            echo "Current directory:"
+            pwd
+
+            echo "Testing staging directory..."
             cd /opt/apps/vinum/staging
 
-            echo "Diretório:"
+            echo "Directory:"
             pwd
 
-            echo "Atualizando repositório..."
-            git fetch origin
-            git checkout staging
-            git reset --hard origin/staging
+            echo "Git branch:"
+            git branch --show-current
 
-            echo "Commit que será publicado:"
-            git log -1 --oneline
+            echo "Git status:"
+            git status --short --branch
 
-            echo "Recriando containers..."
-            docker compose -p vinum-staging up -d --build
-
-            echo "Containers:"
-            docker compose -p vinum-staging ps
+            echo "Docker access:"
+            docker ps --format "table {{.Names}}\t{{.Status}}"
 
             echo "========================================"
-            echo "DEPLOY STAGING FINALIZADO"
-            echo "========================================"
-
-  deploy-production:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy production
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
-
-            echo "========================================"
-            echo "INICIANDO DEPLOY PRODUCTION"
-            echo "========================================"
-
-            echo "Usuário:"
-            whoami
-
-            echo "Servidor:"
-            hostname
-
-            cd /opt/apps/vinum/production
-
-            echo "Diretório:"
-            pwd
-
-            echo "Atualizando repositório..."
-            git fetch origin
-            git checkout main
-            git reset --hard origin/main
-
-            echo "Commit que será publicado:"
-            git log -1 --oneline
-
-            echo "Recriando containers..."
-            docker compose -p vinum-production up -d --build
-
-            echo "Containers:"
-            docker compose -p vinum-production ps
-
-            echo "========================================"
-            echo "DEPLOY PRODUCTION FINALIZADO"
+            echo "TEST COMPLETED SUCCESSFULLY"
             echo "========================================"
