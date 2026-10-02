@@ -7,44 +7,9 @@ on:
 
 jobs:
   test-ssh:
-    name: Test SSH connection
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate secrets
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -e
-
-          test -n "$VPS_HOST" || {
-            echo "ERRO: VPS_HOST está vazio"
-            exit 1
-          }
-
-          test -n "$VPS_USER" || {
-            echo "ERRO: VPS_USER está vazio"
-            exit 1
-          }
-
-          test -n "$VPS_PORT" || {
-            echo "ERRO: VPS_PORT está vazio"
-            exit 1
-          }
-
-          test -n "$VPS_SSH_KEY" || {
-            echo "ERRO: VPS_SSH_KEY está vazio"
-            exit 1
-          }
-
-          echo "Secrets disponíveis."
-          echo "Usuário SSH: $VPS_USER"
-          echo "Porta SSH: $VPS_PORT"
-
       - name: Prepare SSH key
         shell: bash
         env:
@@ -56,79 +21,33 @@ jobs:
           chmod 700 ~/.ssh
 
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/github_action_deploy
-
           chmod 600 ~/.ssh/github_action_deploy
 
-          echo "Validando formato da chave privada..."
+          ssh-keygen -y -f ~/.ssh/github_action_deploy > ~/.ssh/github_action_deploy.pub
 
-          ssh-keygen -y \
-            -f ~/.ssh/github_action_deploy \
-            > ~/.ssh/github_action_deploy.pub
-
-          echo "Chave privada válida."
-
-          echo "Fingerprint da chave usada pelo GitHub Actions:"
+          echo "Fingerprint:"
           ssh-keygen -lf ~/.ssh/github_action_deploy.pub
 
       - name: Add VPS to known hosts
         shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
         run: |
-          set -e
-
-          ssh-keyscan \
-            -p "$VPS_PORT" \
-            -H "$VPS_HOST" \
-            >> ~/.ssh/known_hosts
-
+          ssh-keyscan -H 179.198.119.41 >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Test SSH connection
+      - name: Test SSH
         shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
         run: |
-          set -e
-
           ssh \
-            -i ~/.ssh/github_action_deploy \
-            -p "$VPS_PORT" \
             -o IdentitiesOnly=yes \
-            "$VPS_USER@$VPS_HOST" \
+            -o BatchMode=yes \
+            -i ~/.ssh/github_action_deploy \
+            deployer@179.198.119.41 \
             '
-              echo "========================================"
-              echo "SSH CONNECTION SUCCESSFUL"
-              echo "========================================"
-
-              echo "User:"
+              echo "SSH OK"
               whoami
-
-              echo "Hostname:"
               hostname
-
-              echo "Current directory:"
-              pwd
-
-              echo "Testing staging directory..."
               cd /opt/apps/vinum/staging
-
-              echo "Directory:"
               pwd
-
-              echo "Git branch:"
               git branch --show-current
-
-              echo "Git status:"
-              git status --short --branch
-
-              echo "Docker:"
               docker ps --format "table {{.Names}}\t{{.Status}}"
-
-              echo "========================================"
-              echo "TEST COMPLETED SUCCESSFULLY"
-              echo "========================================"
             '
