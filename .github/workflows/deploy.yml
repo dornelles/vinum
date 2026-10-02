@@ -19,7 +19,7 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          echo "Validando secrets..."
+          set -e
 
           test -n "$VPS_HOST" || {
             echo "ERRO: VPS_HOST está vazio"
@@ -41,54 +41,94 @@ jobs:
             exit 1
           }
 
-          echo "Secrets carregados corretamente."
-          echo "VPS_USER: $VPS_USER"
-          echo "VPS_PORT: $VPS_PORT"
+          echo "Secrets disponíveis."
+          echo "Usuário SSH: $VPS_USER"
+          echo "Porta SSH: $VPS_PORT"
 
-          echo "Primeira linha da chave:"
-          echo "$VPS_SSH_KEY" | head -n 1
+      - name: Prepare SSH key
+        shell: bash
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -e
 
-          echo "Última linha da chave:"
-          echo "$VPS_SSH_KEY" | tail -n 1
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/github_action_deploy
+
+          chmod 600 ~/.ssh/github_action_deploy
+
+          echo "Validando formato da chave privada..."
+
+          ssh-keygen -y \
+            -f ~/.ssh/github_action_deploy \
+            > ~/.ssh/github_action_deploy.pub
+
+          echo "Chave privada válida."
+
+          echo "Fingerprint da chave usada pelo GitHub Actions:"
+          ssh-keygen -lf ~/.ssh/github_action_deploy.pub
+
+      - name: Add VPS to known hosts
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          set -e
+
+          ssh-keyscan \
+            -p "$VPS_PORT" \
+            -H "$VPS_HOST" \
+            >> ~/.ssh/known_hosts
+
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Test SSH connection
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          set -e
 
-            echo "========================================"
-            echo "SSH CONNECTION SUCCESSFUL"
-            echo "========================================"
+          ssh \
+            -i ~/.ssh/github_action_deploy \
+            -p "$VPS_PORT" \
+            -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" \
+            '
+              echo "========================================"
+              echo "SSH CONNECTION SUCCESSFUL"
+              echo "========================================"
 
-            echo "User:"
-            whoami
+              echo "User:"
+              whoami
 
-            echo "Hostname:"
-            hostname
+              echo "Hostname:"
+              hostname
 
-            echo "Current directory:"
-            pwd
+              echo "Current directory:"
+              pwd
 
-            echo "Testing staging directory..."
-            cd /opt/apps/vinum/staging
+              echo "Testing staging directory..."
+              cd /opt/apps/vinum/staging
 
-            echo "Directory:"
-            pwd
+              echo "Directory:"
+              pwd
 
-            echo "Git branch:"
-            git branch --show-current
+              echo "Git branch:"
+              git branch --show-current
 
-            echo "Git status:"
-            git status --short --branch
+              echo "Git status:"
+              git status --short --branch
 
-            echo "Docker access:"
-            docker ps --format "table {{.Names}}\t{{.Status}}"
+              echo "Docker:"
+              docker ps --format "table {{.Names}}\t{{.Status}}"
 
-            echo "========================================"
-            echo "TEST COMPLETED SUCCESSFULLY"
-            echo "========================================"
+              echo "========================================"
+              echo "TEST COMPLETED SUCCESSFULLY"
+              echo "========================================"
+            '
