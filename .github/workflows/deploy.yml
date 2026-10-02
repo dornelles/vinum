@@ -60,6 +60,11 @@ jobs:
       - name: Apply test database migrations
         run: npm run prisma:deploy
 
+      - name: Seed test database
+        run: |
+          npm run prisma:seed
+          npx tsx backend/scripts/seed-ci.ts
+
       - name: Check formatting
         run: npm run format:check
 
