@@ -99,7 +99,12 @@ export const winesService = {
   },
 
   async create(input: Record<string, unknown>, createdById: string) {
-    if (!input.classificationId || !(await prisma.classification.findFirst({ where: { id: String(input.classificationId), active: true } })))
+    if (
+      !input.classificationId ||
+      !(await prisma.classification.findFirst({
+        where: { id: String(input.classificationId), active: true },
+      }))
+    )
       throw new AppError(400, 'Selecione uma classificação ativa para o vinho.');
     const name = String(input.name);
     const references = await resolveReferences(input);
@@ -134,7 +139,9 @@ export const winesService = {
     const data: Prisma.WineUncheckedUpdateInput = {};
     if (input.classificationId !== undefined) {
       const current = await prisma.wine.findUniqueOrThrow({ where: { id } });
-      const classification = await prisma.classification.findUnique({ where: { id: String(input.classificationId) } });
+      const classification = await prisma.classification.findUnique({
+        where: { id: String(input.classificationId) },
+      });
       if (!classification || (!classification.active && current.classificationId !== classification.id))
         throw new AppError(400, 'Selecione uma classificação válida e ativa.');
       data.classificationId = classification.id;

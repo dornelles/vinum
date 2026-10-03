@@ -35,7 +35,8 @@ async function resolveWineId(input: Record<string, unknown>, currentId?: string 
   }
   if (input.wineName) {
     const wines = await prisma.wine.findMany({ where: { name: String(input.wineName) }, take: 2 });
-    if (wines.length !== 1) throw new AppError(400, 'Selecione um vinho pelo identificador; o nome não é único ou não existe.');
+    if (wines.length !== 1)
+      throw new AppError(400, 'Selecione um vinho pelo identificador; o nome não é único ou não existe.');
     return wines[0].id;
   }
   if (currentId) return currentId;
@@ -44,7 +45,8 @@ async function resolveWineId(input: Record<string, unknown>, currentId?: string 
 
 async function resolveGrapeIds(transaction: Prisma.TransactionClient, wineId: string) {
   const links = await transaction.wineGrape.findMany({ where: { wineId }, select: { grapeId: true } });
-  if (!links.length) throw new AppError(400, 'Cadastre as uvas do vinho selecionado antes de salvar a safra.');
+  if (!links.length)
+    throw new AppError(400, 'Cadastre as uvas do vinho selecionado antes de salvar a safra.');
   return links.map(({ grapeId }) => grapeId);
 }
 
@@ -91,12 +93,11 @@ export const vintagesService = {
     const data: Prisma.VintageUncheckedUpdateInput = {};
     const wineId = await resolveWineId(input, current.wineId);
     const changedWine = wineId !== current.wineId;
-    if (changedWine && await prisma.batch.count({ where: { vintageId: id } }))
+    if (changedWine && (await prisma.batch.count({ where: { vintageId: id } })))
       throw new AppError(409, 'Uma safra com lotes vinculados não pode trocar de vinho.');
     if (input.identifier !== undefined)
       data.identifier = normalizeVintageIdentifier(String(input.identifier));
-    if (input.wineId !== undefined || input.wineName !== undefined)
-      data.wineId = wineId;
+    if (input.wineId !== undefined || input.wineName !== undefined) data.wineId = wineId;
     if (input.year !== undefined || input.identifier !== undefined) {
       const effectiveIdentifier =
         input.identifier !== undefined

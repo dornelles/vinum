@@ -24,7 +24,13 @@ router.patch(
   requireAuth,
   requireRoles('CUSTOMER'),
   asyncRoute(async (req, res) => {
-    res.json(await authService.updateProfile(String(res.locals.user.id), profileSchema.parse(req.body), String(res.locals.token)));
+    res.json(
+      await authService.updateProfile(
+        String(res.locals.user.id),
+        profileSchema.parse(req.body),
+        String(res.locals.token),
+      ),
+    );
   }),
 );
 router.post(

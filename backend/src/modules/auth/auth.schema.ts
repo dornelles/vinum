@@ -81,7 +81,14 @@ export const profileSchema = z.object({
   currentPassword: z.string().max(200).optional(),
   name: z.string().trim().min(3).max(120),
   age: z.number().int().min(0).max(130).nullable().optional(),
-  birthDate: z.string().trim().nullable().refine((value) => !value || ageFromBirthDate(value) !== null, 'Informe uma data de nascimento válida, não futura.'),
+  birthDate: z
+    .string()
+    .trim()
+    .nullable()
+    .refine(
+      (value) => !value || ageFromBirthDate(value) !== null,
+      'Informe uma data de nascimento válida, não futura.',
+    ),
   street: z.string().trim().max(160).nullable(),
   addressNumber: z
     .string()

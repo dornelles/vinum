@@ -69,9 +69,13 @@ export async function ensureSeedAdmin() {
   const current = await prisma.user.findFirst({ where: { roleId: adminRole.id } });
   if (current) return;
   const email = (process.env.ADMIN_INITIAL_EMAIL || 'admin@vinum.local').trim().toLowerCase();
-  if (await prisma.user.findUnique({ where: { email } })) throw new AppError(409, 'O e-mail inicial já pertence a outra conta.');
+  if (await prisma.user.findUnique({ where: { email } }))
+    throw new AppError(409, 'O e-mail inicial já pertence a outra conta.');
   const password = process.env.ADMIN_INITIAL_PASSWORD;
-  if (!password || password.length < 12) throw new Error('Configure ADMIN_INITIAL_PASSWORD com pelo menos 12 caracteres para a primeira inicialização.');
+  if (!password || password.length < 12)
+    throw new Error(
+      'Configure ADMIN_INITIAL_PASSWORD com pelo menos 12 caracteres para a primeira inicialização.',
+    );
   const winery = await prisma.winery.findFirstOrThrow();
   await prisma.user.create({
     data: {
@@ -119,40 +123,48 @@ export const authService = {
     return { token, user: publicUser(user) };
   },
 
-  async updateProfile(
-    userId: string,
-    input: z.infer<typeof profileSchema>,
-    token = '',
-  ) {
-    return prisma.$transaction(async (tx) => {
-    const current = await tx.user.findUniqueOrThrow({ where: { id: userId }, include: { roleRef: true } });
-    if (current.roleRef.name !== 'CUSTOMER') throw new AppError(403, 'Use Meu cadastro para editar a conta administrativa.');
-    const credentialsChanged = Boolean(input.email && input.email !== current.email) || Boolean(input.newPassword);
-    if (credentialsChanged && (!input.currentPassword || !(await verifyPassword(input.currentPassword, current))))
-      throw new AppError(400, 'Confirme a senha atual para alterar o e-mail ou a senha.');
-    if (input.email && await tx.user.findFirst({ where: { email: input.email, id: { not: userId } } }))
-      throw new AppError(409, 'Já existe uma conta com este e-mail.');
-    const user = await tx.user.update({
-      where: { id: userId },
-      data: {
-        name: input.name,
-        email: input.email,
-        birthDate: input.birthDate || null,
-        street: input.street || null,
-        addressNumber: input.addressNumber || null,
-        city: input.city || null,
-        state: input.state || null,
-        country: input.country || null,
-        phone: input.phone || null,
-        ...(input.newPassword
-          ? { passwordHash: await bcrypt.hash(input.newPassword, 12), passwordSalt: null }
-          : {}),
+  async updateProfile(userId: string, input: z.infer<typeof profileSchema>, token = '') {
+    return prisma.$transaction(
+      async (tx) => {
+        const current = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          include: { roleRef: true },
+        });
+        if (current.roleRef.name !== 'CUSTOMER')
+          throw new AppError(403, 'Use Meu cadastro para editar a conta administrativa.');
+        const credentialsChanged =
+          Boolean(input.email && input.email !== current.email) || Boolean(input.newPassword);
+        if (
+          credentialsChanged &&
+          (!input.currentPassword || !(await verifyPassword(input.currentPassword, current)))
+        )
+          throw new AppError(400, 'Confirme a senha atual para alterar o e-mail ou a senha.');
+        if (input.email && (await tx.user.findFirst({ where: { email: input.email, id: { not: userId } } })))
+          throw new AppError(409, 'Já existe uma conta com este e-mail.');
+        const user = await tx.user.update({
+          where: { id: userId },
+          data: {
+            name: input.name,
+            email: input.email,
+            birthDate: input.birthDate || null,
+            street: input.street || null,
+            addressNumber: input.addressNumber || null,
+            city: input.city || null,
+            state: input.state || null,
+            country: input.country || null,
+            phone: input.phone || null,
+            ...(input.newPassword
+              ? { passwordHash: await bcrypt.hash(input.newPassword, 12), passwordSalt: null }
+              : {}),
+          },
+          include: { roleRef: true },
+        });
+        if (credentialsChanged)
+          await tx.session.deleteMany({ where: { userId, tokenHash: { not: tokenHash(token) } } });
+        return publicUser(user);
       },
-      include: { roleRef: true },
-    });
-    if (credentialsChanged) await tx.session.deleteMany({ where: { userId, tokenHash: { not: tokenHash(token) } } });
-    return publicUser(user);
-    }, { timeout: 15000 });
+      { timeout: 15000 },
+    );
   },
 
   async authenticate(token: string) {

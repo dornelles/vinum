@@ -14,8 +14,10 @@ it.each([
   const pending: FrameRequestCallback[] = [];
   vi.stubGlobal('document', { activeElement: input });
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => pending.push(callback));
-  updateMaskedInput({ currentTarget: input } as unknown as ChangeEvent<HTMLInputElement>, format, value => { input.value = value; });
-  pending.forEach(callback => callback(0));
+  updateMaskedInput({ currentTarget: input } as unknown as ChangeEvent<HTMLInputElement>, format, (value) => {
+    input.value = value;
+  });
+  pending.forEach((callback) => callback(0));
   expect(input.value).toBe(expected);
   expect(input.setSelectionRange).toHaveBeenCalledWith(expectedCaret, expectedCaret);
 });

@@ -23,21 +23,34 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '2mb' }));
 // Customer uploads are private even when their URL is known.
-app.use('/uploads/inventory', requireAuth, requireRoles('CUSTOMER'), asyncRoute(async (req, res, next) => {
-  const photoPath = `/uploads/inventory${req.path}`;
-  const userId = String(res.locals.user.id);
-  const [stock, order, externalWine] = await Promise.all([
-    prisma.inventoryItem.findFirst({ where: { userId, photoPath }, select: { id: true } }),
-    prisma.customerOrderItem.findFirst({ where: { photoPath, order: { userId } }, select: { id: true } }),
-    prisma.externalWine.findFirst({ where: { userId, imagePath: photoPath }, select: { id: true } }),
-  ]);
-  if (!stock && !order && !externalWine) throw new AppError(404, 'Foto não encontrada.');
-  res.setHeader('Cache-Control', 'private, no-store');
-  next();
-}), express.static(join(uploadsRoot, 'inventory'), { fallthrough: false, cacheControl: false, dotfiles: 'deny' }));
+app.use(
+  '/uploads/inventory',
+  requireAuth,
+  requireRoles('CUSTOMER'),
+  asyncRoute(async (req, res, next) => {
+    const photoPath = `/uploads/inventory${req.path}`;
+    const userId = String(res.locals.user.id);
+    const [stock, order, externalWine] = await Promise.all([
+      prisma.inventoryItem.findFirst({ where: { userId, photoPath }, select: { id: true } }),
+      prisma.customerOrderItem.findFirst({ where: { photoPath, order: { userId } }, select: { id: true } }),
+      prisma.externalWine.findFirst({ where: { userId, imagePath: photoPath }, select: { id: true } }),
+    ]);
+    if (!stock && !order && !externalWine) throw new AppError(404, 'Foto não encontrada.');
+    res.setHeader('Cache-Control', 'private, no-store');
+    next();
+  }),
+  express.static(join(uploadsRoot, 'inventory'), {
+    fallthrough: false,
+    cacheControl: false,
+    dotfiles: 'deny',
+  }),
+);
 // Do not expose the upload root: encoded paths must not bypass private routing.
 for (const folder of ['wines', 'qrcodes']) {
-  app.use(`/uploads/${folder}`, express.static(join(uploadsRoot, folder), { fallthrough: false, maxAge: '1h', dotfiles: 'deny' }));
+  app.use(
+    `/uploads/${folder}`,
+    express.static(join(uploadsRoot, folder), { fallthrough: false, maxAge: '1h', dotfiles: 'deny' }),
+  );
 }
 app.get('/api/health', (_req, res) => res.json({ ok: true, storage: 'prisma-postgresql' }));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));

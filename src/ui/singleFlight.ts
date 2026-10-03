@@ -1,7 +1,4 @@
-export async function runSingleFlight(
-  lock: { current: boolean },
-  action: () => Promise<void>,
-) {
+export async function runSingleFlight(lock: { current: boolean }, action: () => Promise<void>) {
   if (lock.current) return false;
   lock.current = true;
   try {

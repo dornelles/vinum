@@ -1,3 +1,7 @@
 export default function FieldError({ id, message }: { id: string; message?: string }) {
-  return message ? <span id={id} className="field-error">{message}</span> : null;
+  return message ? (
+    <span id={id} className="field-error">
+      {message}
+    </span>
+  ) : null;
 }

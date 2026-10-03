@@ -1,0 +1,177 @@
+name: CI and deploy Vinum
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+
+permissions:
+  contents: read
+
+# A second push to the same branch waits for the active deployment instead of
+# updating the same VPS checkout and Compose project concurrently.
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Validate application
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vinum_ci
+          POSTGRES_USER: vinum_ci
+          POSTGRES_PASSWORD: vinum_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vinum_ci -d vinum_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://vinum_ci:vinum_ci_password@localhost:5432/vinum_ci?schema=public
+      ADMIN_INITIAL_EMAIL: admin-ci@vinum.test
+      ADMIN_INITIAL_PASSWORD: VinumCiPassword123!
+      PUBLIC_APP_URL: http://vinum.test
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply test database migrations
+        run: npm run prisma:deploy
+
+      - name: Seed test database
+        run: |
+          npm run prisma:seed
+          npx tsx backend/scripts/seed-ci.ts
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run unit and integration tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build
+
+      - name: Build API container image
+        run: docker build --target api --tag vinum-ci-api .
+
+      - name: Build web container image
+        run: docker build --target web --build-arg VITE_API_URL=/api --tag vinum-ci-web .
+
+  deploy-staging:
+    name: Deploy staging
+    if: github.ref == 'refs/heads/staging'
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Update staging on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            cd /opt/apps/vinum/staging
+            git fetch --prune origin
+            git checkout --force staging
+            git reset --hard origin/staging
+
+            docker compose -p vinum-staging --profile app up -d --build
+            docker compose -p vinum-staging --profile app ps
+
+            for attempt in $(seq 1 18); do
+              if docker compose -p vinum-staging --profile app ps --format json | grep -q '"unhealthy"'; then
+                docker compose -p vinum-staging --profile app logs --tail=100
+                exit 1
+              fi
+              api_status=$(docker inspect -f '{{.State.Health.Status}}' vinum-staging-api-1 2>/dev/null || true)
+              web_status=$(docker inspect -f '{{.State.Health.Status}}' vinum-staging-web-1 2>/dev/null || true)
+              if [ "$api_status" = healthy ] && [ "$web_status" = healthy ]; then
+                curl --fail --silent --show-error http://127.0.0.1:3006/api/health
+                curl --fail --silent --show-error --head http://127.0.0.1:5176/
+                exit 0
+              fi
+              sleep 5
+            done
+
+            docker compose -p vinum-staging --profile app ps
+            docker compose -p vinum-staging --profile app logs --tail=100
+            exit 1
+
+  deploy-production:
+    name: Deploy production
+    if: github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Update production on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            cd /opt/apps/vinum/production
+            git fetch --prune origin
+            git checkout --force main
+            git reset --hard origin/main
+
+            docker compose -p vinum-production --profile app up -d --build
+            docker compose -p vinum-production --profile app ps
+
+            for attempt in $(seq 1 18); do
+              if docker compose -p vinum-production --profile app ps --format json | grep -q '"unhealthy"'; then
+                docker compose -p vinum-production --profile app logs --tail=100
+                exit 1
+              fi
+              api_status=$(docker inspect -f '{{.State.Health.Status}}' vinum-production-api-1 2>/dev/null || true)
+              web_status=$(docker inspect -f '{{.State.Health.Status}}' vinum-production-web-1 2>/dev/null || true)
+              if [ "$api_status" = healthy ] && [ "$web_status" = healthy ]; then
+                curl --fail --silent --show-error http://127.0.0.1:3005/api/health
+                curl --fail --silent --show-error --head http://127.0.0.1:5175/
+                exit 0
+              fi
+              sleep 5
+            done
+
+            docker compose -p vinum-production --profile app ps
+            docker compose -p vinum-production --profile app logs --tail=100
+            exit 1
