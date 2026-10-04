@@ -17,5 +17,5 @@ COPY --from=build /app /app
 CMD ["node", "scripts/container-start.mjs"]
 
 FROM nginx:stable-alpine AS web
-COPY docker/web.conf /etc/nginx/conf.d/default.conf
+COPY docker/web.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

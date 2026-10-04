@@ -52,6 +52,8 @@ location / {
 
 No bloco HTTPS de produção, use `127.0.0.1:5175`. As rotas `/api/` e `/uploads/` continuam apontando para `127.0.0.1:3006` em staging e `127.0.0.1:3005` em produção. As antigas diretivas `root`, `index` e `try_files` do frontend deixam de ser necessárias no Nginx do host.
 
+O container `web` também encaminha `/api/` e `/uploads/` para o serviço `api` na rede do Compose. Sua configuração é gerada a partir de `docker/web.conf`, com `API_PORT` recebido do `PORT` de cada `.env`. Isso permite acessar o frontend diretamente pela porta `FRONTEND_HOST_PORT`, inclusive no desenvolvimento local, sem fixar a porta de staging ou produção na imagem. O Nginx do host pode continuar encaminhando essas rotas diretamente para a API.
+
 Depois de editar os arquivos:
 
 ```bash
